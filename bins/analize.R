@@ -1,7 +1,11 @@
-p_load("dplyr", "ggplot2","foreach", "ggplot2", "datasets", "MASS", 
-       "e1071", "class", "C50", "caret") 
-
 # This script is the analyses of mice protein expression data
+
+# Not all libraries are needed I just don't know which does what so I 
+# left them all
+library(pacman)
+p_load("dplyr", "ggplot2","foreach", "ggplot2", "datasets", "MASS", 
+       "e1071", "class", "caret") 
+
 # Loading data
 df = read.csv("../inputs/Data_Cortex_Nuclear.csv")
 df_copy = df
@@ -31,41 +35,11 @@ for (i in 2:78){
 summary(df)
 
 # Preparing data for crossvalidation
-# Since the groups are in order let's mix the rows
-df = df[sample(nrow(df)),]
-write.csv(df, "../outputs/df.csv")
-
-# And devide the data into 5 data sets
-df_1 = df[1:216,]
-df_2 = df[217:432,]
-df_3 = df[433:648,]
-df_4 = df[649:864,]
-df_5 = df[865:1080,]
-df_all = list(df_1, df_2, df_3, df_4, df_5)
-df_index = list(1:216, 217:432, 433:648, 649:864, 865:1080)
-df_index_ind = 1:5
-write.csv(df_all, "../outputs/df_all.csv")
-
-df_all_index = c(1:5)
-kazkas1 = c('a','b','c','d','e')
-kazkas2 = c(1:5)
-kazkas = list(kazkas1,kazkas2)
-kazkas_ind = (1:5)
+# Sorry, I borrowed the code
 
 # Let's try knn
 library(class)
 df_knn= df[,2:79]
-
-for (i in 1:5){
-    train_data = df[df_index != df_index[i] ,]
-    write.csv(train_data, "../outputs/train_data.csv")
-    test_data = df_all[df_all_index == i]
-    knn_model <- knn(train = train_data[,2:78], test = test_data[],
-                     cl = train_data$Genotype, k = 2)
-}
-
-knn_model <- knn(train = df[1:864,2:78], test = df[865:1080,2:78], cl = df[1:864,79], k = 1)
-summary(knn_model)
 
 cvKNN <- function(df_knn, kcv = 5, kNN = 2, label="Genotype") {
     # creating index to separate train and validation sets for k-fold validation 
@@ -80,7 +54,7 @@ cvKNN <- function(df_knn, kcv = 5, kNN = 2, label="Genotype") {
         vTest <- df_knn[idx == i, which(names(df_knn) == label)]
         predictionKNN <- knn(train = dTrain, test = dTest, cl = vTrain, k = kNN)
         # it's also good to look at confusion table
-        # print(caret::confusionMatrix(predictionKNN, vTest)$overall[1])
+        print(caret::confusionMatrix(predictionKNN, vTest)$overall[1])
         data.frame(
             foldID = i, 
             kNN = kNN, 
@@ -103,6 +77,32 @@ resultCVKNN %>%
     theme_bw()
 
 resultCVKNNb <- cvKNN(df_knn, kcv = 5, kNN = 1)
+
+# Another method is naive bayes
+# Sorry again, I borrowed the code :D
+
+cvNBC <- function(df_knn, ModelFormula, kcv = 5, label="Genotype") {
+    # creating index to separate train and validation sets for k-fold validation 
+    set.seed(1) 
+    idx <- sample(rep_len(1:kcv, nrow(df_knn)))
+    # loop to fit model for each fold
+    res <- foreach (i = 1:kcv, .combine = rbind) %do% {
+        # spliting datsets
+        dTrain <- df_knn[idx != i, ]
+        dTest <- df_knn[idx == i, ]
+        modelNBClass <- naiveBayes(ModelFormula, data = dTrain)
+        predictionMBClass <- predict(modelNBClass, dTest)
+        # it's also good to look at confusion table
+        print(paste0("foldID ", i))
+        print(caret::confusionMatrix(predictionMBClass, dTest$Genotype))
+        data.frame(
+            foldID = i, 
+            validationAccuracy = caret::confusionMatrix(
+                predictionMBClass, dTest$Genotype)$overall[1])
+    }
+    return(res)
+}
+resultCVNBCb <- cvNBC(df_knn, ModelFormula = formula(Genotype ~ .), kcv = 5)
 
 # PCA for redusing dimentions 
 library(stats)
